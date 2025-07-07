@@ -1,0 +1,13 @@
+[DEBUG]	Love2D démarré en mode debug
+[AUTH] Gestionnaire d'authentification initialisé
+[LOGIN] Scène de connexion initialisée
+[REGISTER] Scène d'inscription initialisée
+[CHARACTER-SELECT] Scène de sélection de personnage initialisée
+[CHARACTER-CREATION] Scène de création de personnage initialisée
+[LOGIN] Connexion au master server
+[AUTH] Connexion au master server	127.0.0.1:8080
+[AUTH] Connexion au master server réussie
+[DEBUG]	Scenes initialisées
+[AUTH] Message reçu du serveur:	request_identity
+[AUTH] Serveur demande l'identité
+quit

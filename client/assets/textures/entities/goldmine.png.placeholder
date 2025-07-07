@@ -1,0 +1,38 @@
+# Placeholder pour la texture de la mine d'or
+
+## Placement de la texture
+
+Ce fichier indique où placer la texture de la mine d'or.
+
+### 📁 Fichier attendu
+- **Nom**: `goldmine.png`
+- **Chemin**: `forgottenkingdom-client/assets/textures/entities/goldmine.png`
+- **Taille**: 64x64 pixels
+- **Format**: PNG avec transparence alpha
+
+### 🎨 Variantes recommandées (optionnel)
+- `goldmine_full.png` - Mine pleine (état "full")
+- `goldmine_partial.png` - Mine partiellement vidée (état "partial")
+- `goldmine_low.png` - Mine presque vide (état "low")
+- `goldmine_empty.png` - Mine vide (état "respawning")
+
+### 💡 Conseils pour l'artiste
+- Style pixel art recommandé
+- Couleurs dorées/jaunes pour l'or
+- Couleurs grises/brunes pour la roche
+- Transparence pour les bords
+- Éviter les détails trop fins (visibility à 48x48)
+
+### 🔧 Utilisation
+Cette texture sera utilisée par le composant `Texture` de l'entité `GoldMineEntity` :
+
+```lua
+-- Référence côté serveur
+Components.Texture:new({
+    name = "goldmine",  -- Correspond au nom du fichier
+    index = 1,
+    size = 48
+})
+```
+
+Une fois la texture placée, supprimer ce fichier placeholder. 

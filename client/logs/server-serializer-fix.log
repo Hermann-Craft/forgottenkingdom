@@ -1,0 +1,133 @@
+[MIGRATION] Mise à jour des données existantes...
+[MIGRATION] Mot de passe migré vers hash sécurisé
+[MIGRATION] Migration terminée
+bind	1	nil
+listen	1	nil
+[MASTER SERVER] Démarrage sur le port 8080...
+[MASTER SERVER] Modules de sécurité chargés
+[MASTER SERVER] Serveur prêt avec sécurité renforcée !
+[MASTER SERVER] Nouvelles routes disponibles:
+  - register_user: Inscription sécurisée
+  - check_email_exists: Vérification email
+  - logout: Déconnexion sécurisée
+  - server_stats: Statistiques du serveur
+[MASTER SERVER] Fonctionnalités de sécurité:
+  - Hash des mots de passe
+  - Tokens JWT
+  - Rate limiting
+  - Validation des données
+  - Logs d'audit
+[MASTER SERVER] Client connecté:	tcp{client}: 0x7638b50d1460	IP:	client_tcp{client}: 0x7638b50d1460
+[SERIALIZER] Désérialisation:	95	caractères
+[SERIALIZER] JSON module disponible:	oui
+[MASTER SERVER] Packet reçu:	connect_with_password	de	client_tcp{client}: 0x7638b50d1460
+[JWT DEBUG] Token généré: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@herm...
+[JWT DEBUG] Header: {"typ":"JWT","alg":"HS256"}
+[JWT DEBUG] Payload: {"email":"vincent@hermann.life","iat":1751736312,"exp":1751822712}
+[TOKEN DEBUG] 🔑 Nouveau token généré pour: vincent@hermann.life
+[TOKEN DEBUG] Token longueur: 103
+[TOKEN DEBUG] Token début: {"typ":"JWT","alg":"HS256"}.{"...
+[TOKEN DEBUG] ✅ Token stocké correctement en Redis
+[AUTH LOG] [2025-07-05 19:25:12] AUTH_SUCCESS: vincent@hermann.life from client_tcp{client}: 0x7638b50d1460
+[SERIALIZER] Désérialisation:	193	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	list_character	de	client_tcp{client}: 0x7638b50d1460
+[TOKEN DEBUG] Vérification token pour: vincent@hermann.life
+[TOKEN DEBUG] Token reçu longueur: 87
+[TOKEN DEBUG] Token stocké longueur: 103
+[TOKEN DEBUG] ❌ Tokens différents
+[TOKEN DEBUG] Token reçu début: {typ:JWT,alg:HS256}.{email:vincent@hermann.life,iat:1751736312,exp:1751822712}.12a76350
+[TOKEN DEBUG] Token stocké début: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@hermann.life","iat":1751736312,"exp":1751822712}.12a76350
+[TOKEN DEBUG] JWT valide: false
+[SERIALIZER] Désérialisation:	193	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	list_character	de	client_tcp{client}: 0x7638b50d1460
+[TOKEN DEBUG] Vérification token pour: vincent@hermann.life
+[TOKEN DEBUG] Token reçu longueur: 87
+[TOKEN DEBUG] Token stocké longueur: 103
+[TOKEN DEBUG] ❌ Tokens différents
+[TOKEN DEBUG] Token reçu début: {typ:JWT,alg:HS256}.{email:vincent@hermann.life,iat:1751736312,exp:1751822712}.12a76350
+[TOKEN DEBUG] Token stocké début: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@hermann.life","iat":1751736312,"exp":1751822712}.12a76350
+[TOKEN DEBUG] JWT valide: false
+[SERIALIZER] Désérialisation:	299	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	create_character	de	client_tcp{client}: 0x7638b50d1460
+[TOKEN DEBUG] Vérification token pour: vincent@hermann.life
+[TOKEN DEBUG] Token reçu longueur: 87
+[TOKEN DEBUG] Token stocké longueur: 103
+[TOKEN DEBUG] ❌ Tokens différents
+[TOKEN DEBUG] Token reçu début: {typ:JWT,alg:HS256}.{email:vincent@hermann.life,iat:1751736312,exp:1751822712}.12a76350
+[TOKEN DEBUG] Token stocké début: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@hermann.life","iat":1751736312,"exp":1751822712}.12a76350
+[TOKEN DEBUG] JWT valide: false
+[MASTER SERVER] Client connecté:	tcp{client}: 0x7638b50aa198	IP:	client_tcp{client}: 0x7638b50aa198
+[MASTER SERVER] Client connecté:	tcp{client}: 0x7638b50b3758	IP:	client_tcp{client}: 0x7638b50b3758
+[SERIALIZER] Désérialisation:	95	caractères
+[SERIALIZER] JSON module disponible:	oui
+[MASTER SERVER] Packet reçu:	connect_with_password	de	client_tcp{client}: 0x7638b50b3758
+[JWT DEBUG] Token généré: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@herm...
+[JWT DEBUG] Header: {"typ":"JWT","alg":"HS256"}
+[JWT DEBUG] Payload: {"email":"vincent@hermann.life","iat":1751736581,"exp":1751822981}
+[TOKEN DEBUG] 🔑 Nouveau token généré pour: vincent@hermann.life
+[TOKEN DEBUG] Token longueur: 103
+[TOKEN DEBUG] Token début: {"typ":"JWT","alg":"HS256"}.{"...
+[TOKEN DEBUG] ✅ Token stocké correctement en Redis
+[AUTH LOG] [2025-07-05 19:29:41] AUTH_SUCCESS: vincent@hermann.life from client_tcp{client}: 0x7638b50b3758
+[SERIALIZER] Désérialisation:	193	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	list_character	de	client_tcp{client}: 0x7638b50b3758
+[TOKEN DEBUG] Vérification token pour: vincent@hermann.life
+[TOKEN DEBUG] Token reçu longueur: 87
+[TOKEN DEBUG] Token stocké longueur: 103
+[TOKEN DEBUG] ❌ Tokens différents
+[TOKEN DEBUG] Token reçu début: {typ:JWT,alg:HS256}.{email:vincent@hermann.life,iat:1751736581,exp:1751822981}.33587862
+[TOKEN DEBUG] Token stocké début: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@hermann.life","iat":1751736581,"exp":1751822981}.33587862
+[TOKEN DEBUG] JWT valide: false
+[SERIALIZER] Désérialisation:	193	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	list_character	de	client_tcp{client}: 0x7638b50b3758
+[TOKEN DEBUG] Vérification token pour: vincent@hermann.life
+[TOKEN DEBUG] Token reçu longueur: 87
+[TOKEN DEBUG] Token stocké longueur: 103
+[TOKEN DEBUG] ❌ Tokens différents
+[TOKEN DEBUG] Token reçu début: {typ:JWT,alg:HS256}.{email:vincent@hermann.life,iat:1751736581,exp:1751822981}.33587862
+[TOKEN DEBUG] Token stocké début: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@hermann.life","iat":1751736581,"exp":1751822981}.33587862
+[TOKEN DEBUG] JWT valide: false
+[MASTER SERVER] Client connecté:	tcp{client}: 0x7638b508aa48	IP:	client_tcp{client}: 0x7638b508aa48
+[SERIALIZER] Désérialisation:	95	caractères
+[SERIALIZER] JSON module disponible:	oui
+[MASTER SERVER] Packet reçu:	connect_with_password	de	client_tcp{client}: 0x7638b508aa48
+[JWT DEBUG] Token généré: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@herm...
+[JWT DEBUG] Header: {"typ":"JWT","alg":"HS256"}
+[JWT DEBUG] Payload: {"email":"vincent@hermann.life","iat":1751736787,"exp":1751823187}
+[TOKEN DEBUG] 🔑 Nouveau token généré pour: vincent@hermann.life
+[TOKEN DEBUG] Token longueur: 103
+[TOKEN DEBUG] Token début: {"typ":"JWT","alg":"HS256"}.{"...
+[TOKEN DEBUG] ✅ Token stocké correctement en Redis
+[AUTH LOG] [2025-07-05 19:33:07] AUTH_SUCCESS: vincent@hermann.life from client_tcp{client}: 0x7638b508aa48
+[SERIALIZER] Désérialisation:	193	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	list_character	de	client_tcp{client}: 0x7638b508aa48
+[TOKEN DEBUG] Vérification token pour: vincent@hermann.life
+[TOKEN DEBUG] Token reçu longueur: 87
+[TOKEN DEBUG] Token stocké longueur: 103
+[TOKEN DEBUG] ❌ Tokens différents
+[TOKEN DEBUG] Token reçu début: {typ:JWT,alg:HS256}.{email:vincent@hermann.life,iat:1751736787,exp:1751823187}.67db33d2
+[TOKEN DEBUG] Token stocké début: {"typ":"JWT","alg":"HS256"}.{"email":"vincent@hermann.life","iat":1751736787,"exp":1751823187}.67db33d2
+[TOKEN DEBUG] JWT valide: false
+[SERIALIZER] Désérialisation:	193	caractères
+[SERIALIZER] JSON module disponible:	oui
+[SERIALIZER] Token après désérialisation:	103	caractères
+[SERIALIZER] Token début après:	{"typ":"JWT","alg":"HS256"}.{"...
+[MASTER SERVER] Packet reçu:	list_character	de	client_tcp{client}: 0x

@@ -1,0 +1,36 @@
+[
+    {
+        "name": "Mother Spider",
+        "position": { "x": 0, "y": 0 },
+        "orientation": 0,
+        "dimension": { "width": 64, "height": 64 },
+        "eye": 500,
+        "hand": null,
+        "brain": [ "AttackEnemyClan", "CreateChildEntity" ],
+        "intelligence": 0,
+        "force": 30,
+        "speed": 10,
+        "agility": 10,
+        "life": 100,
+        "fame": 10,
+        "wallet": 100,
+        "clan": "oryx"
+    },
+    {
+        "name": "Spider",
+        "position": { "x": 0, "y": 0 },
+        "orientation": 0,
+        "dimension": { "width": 32, "height": 32 },
+        "eye": 500,
+        "hand": null,
+        "brain": [ "AttackEnemyClan", "CreateChildEntity" ],
+        "intelligence": 0,
+        "force": 30,
+        "speed": 10,
+        "agility": 10,
+        "life": 100,
+        "fame": 10,
+        "wallet": 100,
+        "clan": "oryx"
+    }
+]
