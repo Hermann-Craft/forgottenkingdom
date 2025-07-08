@@ -77,18 +77,37 @@ function PlayScreen:draw(...)
     if _G.worldServer ~= nil then
         _G.worldServer:draw(...)
         
-        -- Affichage de l'interface de mining avec UIManager
+        -- Affichage des interfaces avec UIManager
         if self.uiManager then
-            local miningInfo = _G.worldServer:getMiningInfo()
             local screenWidth = love.graphics.getWidth()
             local screenHeight = love.graphics.getHeight()
             
-            -- Mettre à jour les indicateurs de proximité dans le monde
-            if _G.worldServer.world then
-                _G.worldServer.world:updateNearbyMineIndicators(miningInfo.nearbyMines)
+            -- Priorité 1: Interface villageois si des villageois sont disponibles
+            local villagerInfo = _G.worldServer:getVillagerInfo()
+            if villagerInfo.hasAvailableVillagers then
+                -- Mettre à jour les indicateurs de proximité des villageois dans le monde
+                if _G.worldServer.world then
+                    _G.worldServer.world:updateNearbyVillagerIndicators(villagerInfo.nearbyVillagers)
+                end
+                
+                self.uiManager:drawVillagerInterface(villagerInfo, screenWidth, screenHeight)
+            else
+                -- Priorité 2: Interface mining si des mines sont disponibles
+                local miningInfo = _G.worldServer:getMiningInfo()
+                if miningInfo.hasAvailableMines then
+                    -- Mettre à jour les indicateurs de proximité des mines dans le monde
+                    if _G.worldServer.world then
+                        _G.worldServer.world:updateNearbyMineIndicators(miningInfo.nearbyMines)
+                    end
+                    
+                    self.uiManager:drawMiningInterface(miningInfo, screenWidth, screenHeight)
+                else
+                    -- Afficher juste le panneau d'or sans interface d'interaction
+                    self.uiManager:drawGoldPanel(miningInfo, screenWidth, screenHeight)
+                    self.uiManager:drawNotifications(screenWidth, screenHeight)
+                    self.uiManager:drawGoldAnimations()
+                end
             end
-            
-            self.uiManager:drawMiningInterface(miningInfo, screenWidth, screenHeight)
         end
         
         -- Remettre la couleur par défaut
@@ -144,7 +163,26 @@ function PlayScreen:mousereleased(...)
 end
 
 function PlayScreen:keyreleased(key)
-    -- Touche d'échappement pour retourner à la sélection de personnage
+    -- Gestion prioritaire du menu contextuel villageois
+    if self.uiManager and self.uiManager:isMenuOpen() then
+        if key == "escape" then
+            self.uiManager:closeVillagerMenu()
+            return
+        elseif key == "up" then
+            self.uiManager:navigateMenuUp()
+            return
+        elseif key == "down" then
+            self.uiManager:navigateMenuDown()
+            return
+        elseif key == "return" or key == "kpenter" then
+            self.uiManager:selectCurrentTask()
+            return
+        end
+        -- Bloquer toutes les autres touches quand le menu est ouvert
+        return
+    end
+    
+    -- Touches normales de jeu quand le menu n'est pas ouvert
     if key == "escape" then
         print("[PLAY] Retour à la sélection de personnage")
         _G.xle.Scene.goToScene("scene-character-select")
@@ -164,15 +202,7 @@ function PlayScreen:keyreleased(key)
             }))
         end
         if key == "e" then
-            -- Tentative de mining avec feedback UI
-            if self.uiManager then
-                self.uiManager:onMiningAttempt()
-            end
-            
-            local success = _G.worldServer:tryMining()
-            if not success and self.uiManager then
-                self.uiManager:onMiningError("Aucune mine disponible pour miner")
-            end
+            self:handleInteractionKey()
         end
     end
 end
@@ -186,6 +216,29 @@ function PlayScreen:keypressed(key)
             }))
         end
     end
+end
+
+-- Gestionnaire propre pour la touche E avec priorités
+function PlayScreen:handleInteractionKey()
+    if not _G.worldServer then return end
+    
+    -- Priorité 1: Menu contextuel villageois Worker (si propriétaire)
+    if _G.worldServer:tryOpenVillagerMenu() then
+        return -- Action réussie, arrêter ici
+    end
+    
+    -- Priorité 2: Recrutement villageois Hireable (si assez d'or)
+    if _G.worldServer:tryRecruitment() then
+        return -- Action réussie, arrêter ici  
+    end
+    
+    -- Priorité 3: Mining (si mine disponible)
+    if _G.worldServer:tryMining() then
+        return -- Action réussie, arrêter ici
+    end
+    
+    -- Aucune interaction disponible
+    print("[PLAY] Aucune interaction disponible à proximité")
 end
 
 return PlayScreen;

@@ -34,24 +34,33 @@ end
 
 _G.Server = {
     Clients = {},
+    -- OPTIMISATION: Cache pour éviter les recherches répétitives
+    UdpToPlayer = {}, -- {udp_clientid = playerId}
+    TcpToPlayer = {}, -- {tcp_clientid = playerId}
+    
     getClientByTcp = function (self, clientid)
-        local uid = nil
-        for k, v in pairs(self.Clients) do
-            if v.tcp == clientid then
-                uid = k
-            end
-        end
-        return uid
+        -- OPTIMISATION: Utiliser le cache direct au lieu de parcourir tous les clients
+        return self.TcpToPlayer[clientid]
     end,
     getClientByUdp = function (self, clientid)
-        local uid = nil
-        for k, v in pairs(self.Clients) do
-            if v.udp == clientid then
-                uid = k
-            end
-        end
-        return uid
+        -- OPTIMISATION: Utiliser le cache direct au lieu de parcourir tous les clients
+        return self.UdpToPlayer[clientid]
     end,
+    
+    -- Méthodes pour maintenir le cache
+    setUdpMapping = function(self, clientid, playerId)
+        self.UdpToPlayer[clientid] = playerId
+    end,
+    setTcpMapping = function(self, clientid, playerId)
+        self.TcpToPlayer[clientid] = playerId
+    end,
+    clearUdpMapping = function(self, clientid)
+        self.UdpToPlayer[clientid] = nil
+    end,
+    clearTcpMapping = function(self, clientid)
+        self.TcpToPlayer[clientid] = nil
+    end,
+    
     Tcp = require(_G.libDir .. "tcp_server"):new(),
     Udp = require(_G.libDir .. "udp_server"):new()
 }
@@ -68,6 +77,7 @@ _G.RealmWorld = require(_G.worldsDir .. "world-realm"):new()
 local PlayerEntity = require(_G.entitiesDir .. "entity-player")
 local ProjectileEntity = require(_G.entitiesDir .. "entity-projectile")
 local GoldMineEntity = require(_G.entitiesDir .. "entity-goldmine")
+local VillagerEntity = require(_G.entitiesDir .. "entity-villager")
 
 _G.Server.Tcp.handshake = handshake
 _G.Server.Udp.handshake = handshake
@@ -80,6 +90,9 @@ function love.load(arg)
         if k == 1 then
         end
     end
+    
+    -- Phase 5 : Système villageois complet avec ressources
+    print("[VILLAGER] ✅ Système villageois Phase 5 démarré - Spawn, IA, menus et ressources")
 end
 
 _G.Server.Udp.callbacks.recv = function (data, clientid)
@@ -94,11 +107,21 @@ _G.Server.Udp.callbacks.recv = function (data, clientid)
         _G.Server.Clients[playerId].udp = clientid
         _G.Server.Clients[playerId].lastSeen = love.timer.getTime()
         
+        -- OPTIMISATION: Maintenir le cache pour éviter les recherches
+        _G.Server:setUdpMapping(clientid, playerId)
+        
         print("[UDP][".. playerId .."]: connected")
     elseif packet.id == "disconnection" then
         local playerId = packet.data.email
         if _G.Server.Clients[playerId] then
+            local udpClientId = _G.Server.Clients[playerId].udp
             _G.Server.Clients[playerId].udp = nil
+            
+            -- OPTIMISATION: Nettoyer le cache
+            if udpClientId then
+                _G.Server:clearUdpMapping(udpClientId)
+            end
+            
             print("[UDP][".. playerId .."]: disconnected")
         else
             print("[UDP] Tentative de déconnexion pour un client inexistant:", playerId)
@@ -199,10 +222,8 @@ _G.Server.Udp.callbacks.recv = function (data, clientid)
                 }), _G.Server.Clients[uid].tcp)
             end
             
-            -- Log pour debug
-            if result.success then
-                print("[MINING] Joueur", uid, "a récolté", result.goldHarvested, "or de la mine", packet.data.mineId)
-            else
+            -- OPTIMISATION: Logs debug réduits pour éviter le spam (seulement échecs)
+            if not result.success then
                 print("[MINING] Échec récolte pour joueur", uid, ":", result.reason)
             end
         end
@@ -238,32 +259,26 @@ _G.cleanupDisconnectedPlayer = function(playerId, reason)
     -- TODO: Implémenter la sauvegarde si nécessaire
 end
 
--- Fonction pour trouver un joueur par client TCP
+-- OPTIMISATION: Fonctions obsolètes remplacées par le cache direct
+-- Fonction pour trouver un joueur par client TCP (OPTIMISÉE)
 _G.findPlayerByTcpClient = function(clientid)
-    for playerId, clientData in pairs(_G.Server.Clients) do
-        if clientData.tcp == clientid then
-            return playerId
-        end
-    end
-    return nil
+    return _G.Server:getClientByTcp(clientid)
 end
 
--- Fonction pour trouver un joueur par client UDP
+-- Fonction pour trouver un joueur par client UDP (OPTIMISÉE)
 _G.findPlayerByUdpClient = function(clientid)
-    for playerId, clientData in pairs(_G.Server.Clients) do
-        if clientData.udp == clientid then
-            return playerId
-        end
-    end
-    return nil
+    return _G.Server:getClientByUdp(clientid)
 end
 
 _G.Server.Udp.callbacks.disconnect = function (clientid)
     print("[UDP][".. tostring(clientid) .. "]: disconnected")
     
-    -- Trouver le joueur associé à ce client UDP
-    local playerId = _G.findPlayerByUdpClient(clientid)
+    -- OPTIMISATION: Utiliser le cache direct
+    local playerId = _G.Server:getClientByUdp(clientid)
     if playerId then
+        -- Nettoyer le cache UDP
+        _G.Server:clearUdpMapping(clientid)
+        
         -- Marquer UDP comme déconnecté
         if _G.Server.Clients[playerId] then
             _G.Server.Clients[playerId].udp = nil
@@ -279,7 +294,10 @@ end
 
 _G.Server.Tcp.callbacks.recv = function (data, clientid)
     local packet = _G.bitser.loads(data)
-    print("[TCP] Message reçu:", packet.id, "de client", clientid)
+    -- OPTIMISATION: Logs TCP réduits (seulement connexions importantes)
+    if packet.id == "connection" or packet.id == "disconnection" then
+        print("[TCP] Message reçu:", packet.id, "de client", clientid)
+    end
     
     if packet.id == "connection" then
         local playerId = packet.data.email
@@ -298,6 +316,9 @@ _G.Server.Tcp.callbacks.recv = function (data, clientid)
         end
         _G.Server.Clients[playerId].tcp = clientid
         _G.Server.Clients[playerId].lastSeen = love.timer.getTime()
+        
+        -- OPTIMISATION: Maintenir le cache TCP
+        _G.Server:setTcpMapping(clientid, playerId)
         
         print("[TCP] Joueur connecté:", playerId)
         print("[TCP] Nom du personnage:", packet.data.characterName)
@@ -354,11 +375,19 @@ _G.Server.Tcp.callbacks.recv = function (data, clientid)
         }), clientid)
     elseif packet.id == "disconnection" then
         -- TODO: Delete token in redis
-        if _G.Server.Clients[packet.data.email] then
-            _G.Server.Clients[packet.data.email].tcp = nil
-            print("[TCP][".. packet.data.email .."]: disconnected")
+        local playerId = packet.data.email
+        if _G.Server.Clients[playerId] then
+            local tcpClientId = _G.Server.Clients[playerId].tcp
+            _G.Server.Clients[playerId].tcp = nil
+            
+            -- OPTIMISATION: Nettoyer le cache TCP
+            if tcpClientId then
+                _G.Server:clearTcpMapping(tcpClientId)
+            end
+            
+            print("[TCP][".. playerId .."]: disconnected")
         else
-            print("[TCP] Tentative de déconnexion pour un client inexistant:", packet.data.email)
+            print("[TCP] Tentative de déconnexion pour un client inexistant:", playerId)
         end
     elseif packet.id == "request_player_entity" then
         local clans = { "alliance", "horde", "steampunk" }
@@ -386,6 +415,156 @@ _G.Server.Tcp.callbacks.recv = function (data, clientid)
                 }))
                 end
             end 
+        end
+    elseif packet.id == "player_recruit_villager" then  -- Phase 3: Recrutement de villageois
+        -- Trouver le joueur qui fait la demande
+        local playerId = _G.findPlayerByTcpClient(clientid)
+        if not playerId then
+            print("[RECRUIT] Erreur: Client TCP non associé à un joueur")
+            _G.Server.Tcp:send(_G.bitser.dumps({
+                id = "recruitment_result",
+                data = {
+                    success = false,
+                    reason = "player_not_found",
+                    message = "Joueur non trouvé!"
+                }
+            }), clientid)
+            return
+        end
+        
+        -- Mettre à jour lastSeen
+        if _G.Server.Clients[playerId] then
+            _G.Server.Clients[playerId].lastSeen = love.timer.getTime()
+        end
+        
+        local villagerId = packet.data.villagerId
+        print("[RECRUIT] Demande de recrutement:", playerId, "→", villagerId)
+        
+        -- Déléguer au système de recrutement via RealmWorld
+        local result = _G.RealmWorld:handleRecruitmentRequest(playerId, villagerId)
+        
+        -- Envoyer le résultat au client
+        _G.Server.Tcp:send(_G.bitser.dumps({
+            id = "recruitment_result",
+            data = result
+        }), clientid)
+        
+        -- Log pour debug
+        if result.success then
+            print("[RECRUIT] ✅ Recrutement réussi:", playerId, "a recruté", villagerId, "pour", result.goldSpent, "or")
+        else
+            print("[RECRUIT] ❌ Échec recrutement:", result.reason, "-", result.message)
+        end
+    elseif packet.id == "player_open_villager_menu" then  -- Phase 4: Ouverture de menu contextuel
+        -- Trouver le joueur qui fait la demande
+        local playerId = _G.findPlayerByTcpClient(clientid)
+        if not playerId then
+            print("[CONTEXT-MENU] Erreur: Client TCP non associé à un joueur")
+            _G.Server.Tcp:send(_G.bitser.dumps({
+                id = "villager_menu_data",
+                data = {
+                    success = false,
+                    reason = "player_not_found",
+                    message = "Joueur non trouvé!"
+                }
+            }), clientid)
+            return
+        end
+        
+        -- Mettre à jour lastSeen
+        if _G.Server.Clients[playerId] then
+            _G.Server.Clients[playerId].lastSeen = love.timer.getTime()
+        end
+        
+        local villagerId = packet.data.villagerId
+        print("[CONTEXT-MENU] Demande de menu:", playerId, "→", villagerId)
+        
+        -- Déléguer au système de menu contextuel via RealmWorld
+        local result = _G.RealmWorld:handleMenuRequest(playerId, villagerId)
+        
+        -- Envoyer les données du menu au client (succès ou échec)
+        _G.Server.Tcp:send(_G.bitser.dumps({
+            id = "villager_menu_data",
+            data = result
+        }), clientid)
+        
+        -- Log pour debug avec plus de détails
+        if result.success then
+            print("[CONTEXT-MENU] ✅ Menu généré:", result.villagerName, "- Tâche actuelle:", result.currentTask)
+            print("[CONTEXT-MENU] 📋 Tâches disponibles:", result.availableTasks and #result.availableTasks or "NIL")
+            if result.availableTasks then
+                for i, task in ipairs(result.availableTasks) do
+                    local status = task.disabled and "🚫" or "✅"
+                    print("    " .. i .. ". " .. status .. " " .. task.name .. " (" .. (task.id or "nil") .. ")")
+                end
+            end
+        else
+            print("[CONTEXT-MENU] ❌ Échec menu:", result.reason, "-", result.message)
+        end
+    elseif packet.id == "player_assign_task" then  -- Phase 4: Assignation de tâche
+        -- Trouver le joueur qui fait la demande
+        local playerId = _G.findPlayerByTcpClient(clientid)
+        if not playerId then
+            print("[TASK-ASSIGN] Erreur: Client TCP non associé à un joueur")
+            _G.Server.Tcp:send(_G.bitser.dumps({
+                id = "task_assignment_result",
+                data = {
+                    success = false,
+                    reason = "player_not_found",
+                    message = "Joueur non trouvé!"
+                }
+            }), clientid)
+            return
+        end
+        
+        -- Mettre à jour lastSeen
+        if _G.Server.Clients[playerId] then
+            _G.Server.Clients[playerId].lastSeen = love.timer.getTime()
+        end
+        
+        local villagerId = packet.data.villagerId
+        local taskId = packet.data.taskId
+        print("[TASK-ASSIGN] Demande assignation:", playerId, "→", villagerId, "→ Tâche", taskId)
+        
+        -- Déléguer au système de menu contextuel via RealmWorld
+        local result = _G.RealmWorld:handleTaskAssignment(playerId, villagerId, taskId)
+        
+        -- Envoyer le résultat au client
+        _G.Server.Tcp:send(_G.bitser.dumps({
+            id = "task_assignment_result",
+            data = result
+        }), clientid)
+        
+        -- Log pour debug
+        if result.success then
+            print("[TASK-ASSIGN] ✅ Tâche assignée:", result.oldTask, "→", result.newTask)
+        else
+            print("[TASK-ASSIGN] ❌ Échec assignation:", result.reason, "-", result.message)
+        end
+    elseif packet.id == "player_close_villager_menu" then  -- Phase 4: Fermeture de menu
+        -- Trouver le joueur qui fait la demande
+        local playerId = _G.findPlayerByTcpClient(clientid)
+        if not playerId then
+            print("[MENU-CLOSE] Erreur: Client TCP non associé à un joueur")
+            return
+        end
+        
+        -- Mettre à jour lastSeen
+        if _G.Server.Clients[playerId] then
+            _G.Server.Clients[playerId].lastSeen = love.timer.getTime()
+        end
+        
+        local villagerId = packet.data.villagerId
+        print("[MENU-CLOSE] Demande fermeture menu:", playerId, "→", villagerId)
+        
+        -- Déléguer au système de menu contextuel via RealmWorld
+        local result = _G.RealmWorld:closeVillagerMenu(playerId, villagerId)
+        
+        -- Log pour debug
+        if result.success then
+            print("[MENU-CLOSE] ✅ Menu fermé pour villageois:", villagerId)
+        else
+            print("[MENU-CLOSE] ❌ Échec fermeture menu:", result.reason, "-", result.message)
         end
     elseif packet.id == "join_world" then
         local serverWorld = _G.RedisClient:hgetall("worlds:".. packet.data.name)

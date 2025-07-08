@@ -12,6 +12,7 @@ function World:initialize(width, height, entities)
     
     -- Indicateurs visuels
     self.nearbyMineIndicators = {} -- Indicateurs pour les mines proches
+    self.nearbyVillagerIndicators = {} -- Indicateurs pour les villageois proches
     
     self.tools = {
         gridSize = {
@@ -143,6 +144,9 @@ function World:draw()
         end
         -- Dessiner les indicateurs de proximité des mines
         self:drawMineProximityIndicators()
+        
+        -- Dessiner les indicateurs de proximité des villageois
+        self:drawVillagerProximityIndicators()
         
         if self.debugActivated then
             self:drawDebug()
@@ -365,6 +369,92 @@ function World:drawMineProximityIndicators()
             indicator.x - 5, indicator.y + 15,
             indicator.x + 5, indicator.y + 15
         )
+    end
+    
+    -- Remettre la couleur par défaut
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function World:updateNearbyVillagerIndicators(nearbyVillagers)
+    -- Mettre à jour les indicateurs de villageois proches
+    self.nearbyVillagerIndicators = {}
+    
+    for villagerId, villagerData in pairs(nearbyVillagers or {}) do
+        if villagerData.canRecruit or villagerData.canMenu then
+            local villagerEntity = self:getEntityById(villagerId)
+            if villagerEntity and villagerEntity.components["Position"] and villagerEntity.components["Dimension"] then
+                local pos = villagerEntity.components["Position"].position
+                local dim = villagerEntity.components["Dimension"]
+                
+                self.nearbyVillagerIndicators[villagerId] = {
+                    x = pos.x + dim.width / 2,
+                    y = pos.y - 30,
+                    type = villagerData.type or "Hireable",
+                    canRecruit = villagerData.canRecruit or false,
+                    canMenu = villagerData.canMenu or false,
+                    cost = villagerData.cost or 25,
+                    villagerName = villagerData.villagerName,
+                    canAfford = villagerData.canAfford,
+                    isOwner = villagerData.isOwner,
+                    clanName = villagerData.clanName,
+                    pulse = 0
+                }
+            end
+        end
+    end
+end
+
+function World:drawVillagerProximityIndicators()
+    local time = love.timer and love.timer.getTime() or 0
+    
+    for villagerId, indicator in pairs(self.nearbyVillagerIndicators) do
+        -- Animation de pulsation
+        local pulse = 0.8 + 0.2 * math.sin(time * 3)
+        local alpha = 0.7 + 0.3 * math.sin(time * 2)
+        
+        -- Couleur selon le type de villageois
+        local color = {0.2, 0.8, 0.2, alpha} -- Vert pour recrutement
+        if indicator.canMenu then
+            color = {0.2, 0.6, 0.8, alpha} -- Bleu pour workers
+        end
+        
+        love.graphics.setColor(color)
+        
+        -- Cercle pulsant
+        love.graphics.circle("fill", indicator.x, indicator.y, 8 * pulse)
+        love.graphics.setColor(1, 1, 1, alpha)
+        love.graphics.circle("line", indicator.x, indicator.y, 8 * pulse)
+        
+        -- Icône "E" au centre
+        love.graphics.setColor(0, 0, 0, alpha)
+        love.graphics.print("E", indicator.x - 4, indicator.y - 6)
+        
+        -- Flèche pointant vers le villageois
+        love.graphics.setColor(color)
+        love.graphics.polygon("fill", 
+            indicator.x, indicator.y + 10,
+            indicator.x - 5, indicator.y + 15,
+            indicator.x + 5, indicator.y + 15
+        )
+        
+        -- Texte d'info selon le type
+        if indicator.canRecruit then
+            love.graphics.setColor(1, 1, 1, alpha)
+            local costText = indicator.cost .. " or"
+            -- Vérifier si le joueur peut se permettre le recrutement
+            if indicator.canAfford == false then
+                love.graphics.setColor(1, 0.3, 0.3, alpha) -- Rouge si pas assez d'or
+            end
+            love.graphics.print(costText, indicator.x - 15, indicator.y - 25)
+        elseif indicator.canMenu then
+            if indicator.isOwner then
+                love.graphics.setColor(0.2, 0.8, 0.2, alpha) -- Vert si propriétaire
+                love.graphics.print("Menu", indicator.x - 12, indicator.y - 25)
+            else
+                love.graphics.setColor(1, 0.8, 0.2, alpha) -- Jaune si pas propriétaire
+                love.graphics.print("Autre clan", indicator.x - 20, indicator.y - 25)
+            end
+        end
     end
     
     -- Remettre la couleur par défaut

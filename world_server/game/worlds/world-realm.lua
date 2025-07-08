@@ -21,6 +21,12 @@ local WorldLimitSystem  = require(_G.baseDir .. "game.systems.system-world_limit
 local NatureSystem      = require(_G.baseDir .. "game.systems.system-nature")
 local InteractionSystem = require(_G.baseDir .. "game.systems.system-interaction")
 local ConnectionCleanupSystem = require(_G.baseDir .. "game.systems.system-connection-cleanup")
+-- Systèmes villageois (Phase 2-5)
+local VillagerSpawnSystem = require(_G.baseDir .. "game.systems.system-villager-spawn")
+local VillagerAISystem = require(_G.baseDir .. "game.systems.system-villager-ai")
+local RecruitSystem = require(_G.baseDir .. "game.systems.system-recruit")
+local ContextMenuSystem = require(_G.baseDir .. "game.systems.system-context-menu")
+local TreeSpawnSystem = require(_G.baseDir .. "game.systems.system-tree-spawn")  -- Phase 5
 
 -- Entities
 local GoldMineEntity    = require(_G.entitiesDir .. "entity-goldmine")
@@ -32,7 +38,8 @@ function RealmWorld:initialize()
     self.height = 2000
     
     -- Configuration debug pour les systèmes
-    self.debugInteraction = false -- Changez à true pour activer les logs du système d'interaction
+    self.debugInteraction = true -- Changez à true pour activer les logs du système d'interaction
+    self.debugVillagers = false -- Debug villageois activé par défaut pour la phase 2
     
     -- Systèmes de jeu
     -- self:addSystem(DeathSystem:new(self))
@@ -45,13 +52,30 @@ function RealmWorld:initialize()
     self:addSystem(WorldLimitSystem:new(self))
     self:addSystem(DestroySystem:new(self))
     
-    -- Nouveau système d'interaction pour les mines (avec option debug)
+    -- 🚀 SYSTÈME D'INTERACTION REFACTORISÉ (utilise collision performante)
+    print("[WORLD] 🚀 Utilisation du système d'interaction REFACTORISÉ")
     self.interactionSystem = InteractionSystem:new(self, self.debugInteraction)
     self:addSystem(self.interactionSystem)
     
     -- Système de nettoyage automatique des connexions
     self.connectionCleanupSystem = ConnectionCleanupSystem:new(self)
     self:addSystem(self.connectionCleanupSystem)
+    
+    -- Systèmes de villageois (Phase 2-4)
+    self.villagerSpawnSystem = VillagerSpawnSystem:new(self, self.debugVillagers)
+    self:addSystem(self.villagerSpawnSystem)
+    
+    self.villagerAISystem = VillagerAISystem:new(self, self.debugVillagers)
+    self:addSystem(self.villagerAISystem)
+    
+    self.recruitSystem = RecruitSystem:new(self, self.debugVillagers)  -- Phase 3
+    self:addSystem(self.recruitSystem)
+    
+    self.contextMenuSystem = ContextMenuSystem:new(self, self.debugVillagers)  -- Phase 4
+    self:addSystem(self.contextMenuSystem)
+    
+    self.treeSpawnSystem = TreeSpawnSystem:new(self)  -- Phase 5
+    self:addSystem(self.treeSpawnSystem)
     
     -- Générer les mines d'or dans le monde
     self:generateGoldMines()
@@ -113,7 +137,108 @@ end
 
 function RealmWorld:handleMiningRequest(playerId, mineId)
     -- Déléguer la gestion de la récolte au système d'interaction
-    return self.interactionSystem:handleMiningRequest(playerId, mineId)
+    if self.interactionSystem then
+        -- Pour le système optimisé, implémenter la logique de minage complète
+        
+        -- Vérifier la proximité via le système de collision
+        if not self.interactionSystem.collisionSystem:isPlayerNearMine(playerId, mineId) then
+            return {
+                success = false,
+                reason = "too_far",
+                message = "Vous êtes trop loin de la mine!"
+            }
+        end
+        
+        -- Obtenir les entités joueur et mine
+        local player = self:getEntityById(playerId)
+        local mine = self:getEntityById(mineId)
+        
+        if not player or not mine then
+            return {
+                success = false,
+                reason = "entity_not_found",
+                message = "Joueur ou mine introuvable!"
+            }
+        end
+        
+        -- Vérifier le portefeuille du joueur
+        local playerWallet = player:getComponent("Wallet")
+        if playerWallet:isFull() then
+            return {
+                success = false,
+                reason = "wallet_full",
+                message = "Votre portefeuille est plein! (" .. playerWallet:getGoldRatio() .. ")"
+            }
+        end
+        
+        -- Vérifier si la mine peut être récoltée
+        local resources = mine:getComponent("Resources")
+        if not resources:canHarvest() then
+            if resources.goldAmount <= 0 then
+                return {
+                    success = false,
+                    reason = "mine_empty",
+                    message = "Cette mine est épuisée! Rechargement en cours..."
+                }
+            else
+                return {
+                    success = false,
+                    reason = "cooldown",
+                    message = "Attendez avant de miner à nouveau!"
+                }
+            end
+        end
+        
+        -- Effectuer la récolte
+        local harvestAmount = love.math.random(5, 15) -- 5-15 or par récolte
+        local actualHarvested = resources:harvest(harvestAmount)
+        
+        -- Ajouter l'or au portefeuille du joueur
+        local goldAdded, goldExcess = playerWallet:addGold(actualHarvested)
+        
+        -- Si on n'a pas pu tout ajouter, remettre la différence dans la mine
+        if goldExcess > 0 then
+            resources.goldAmount = resources.goldAmount + goldExcess
+        end
+        
+        -- Notifier tous les joueurs proches du changement d'état de la mine
+        self:notifyMineStateChange(mine)
+        
+        return {
+            success = true,
+            goldHarvested = goldAdded,
+            newWalletTotal = playerWallet.wallet,
+            mineGoldLeft = resources.goldAmount,
+            mineState = resources.state
+        }
+    else
+        return {
+            success = false,
+            reason = "interaction_system_not_initialized",
+            message = "Le système d'interaction n'est pas initialisé."
+        }
+    end
+end
+
+-- Méthode pour notifier le changement d'état des mines (système optimisé)
+function RealmWorld:notifyMineStateChange(mine)
+    local resources = mine:getComponent("Resources")
+    
+    -- Notifier tous les clients connectés du changement d'état
+    for playerId, clientData in pairs(_G.Server.Clients or {}) do
+        if clientData.tcp then
+            _G.Server.Tcp:send(_G.bitser.dumps({
+                id = "mine_state_update",
+                data = {
+                    mineId = mine.id,
+                    goldAmount = resources.goldAmount,
+                    maxGold = resources.maxGold,
+                    state = resources.state,
+                    respawnTimer = resources.respawnTimer
+                }
+            }), clientData.tcp)
+        end
+    end
 end
 
 -- Méthodes pour contrôler le debug à la volée
@@ -147,6 +272,138 @@ function RealmWorld:getConnectionStats()
         return self.connectionCleanupSystem:getConnectionStats()
     end
     return {}
+end
+
+-- Méthodes pour contrôler les systèmes de villageois
+function RealmWorld:setVillagerDebug(enabled)
+    self.debugVillagers = enabled
+    if self.villagerSpawnSystem then
+        self.villagerSpawnSystem.debugMode = enabled
+    end
+    if self.villagerAISystem then
+        self.villagerAISystem.debugMode = enabled
+    end
+end
+
+function RealmWorld:toggleVillagerDebug()
+    self:setVillagerDebug(not self.debugVillagers)
+    return self.debugVillagers
+end
+
+function RealmWorld:forceSpawnVillager(position)
+    if self.villagerSpawnSystem then
+        return self.villagerSpawnSystem:forceSpawn(position)
+    end
+    return nil
+end
+
+function RealmWorld:getVillagerStats()
+    local villagers = self:getEntitiesWithAtLeast({"Villager"})
+    local savageVillagers = self:getEntitiesWithAtLeast({"Villager", "Hireable"})
+    local workers = self:getEntitiesWithAtLeast({"Villager", "Worker"})
+    
+    return {
+        total = #villagers,
+        savage = #savageVillagers,
+        workers = #workers
+    }
+end
+
+-- Méthode pour gérer les demandes de recrutement (Phase 3)
+function RealmWorld:handleRecruitmentRequest(playerId, villagerId)
+    if self.recruitSystem then
+        return self.recruitSystem:handleRecruitmentRequest(playerId, villagerId)
+    end
+    return {
+        success = false,
+        reason = "system_not_found",
+        message = "Système de recrutement indisponible!"
+    }
+end
+
+-- Méthodes pour contrôler le système de recrutement
+function RealmWorld:getRecruitmentStats()
+    if self.recruitSystem then
+        return self.recruitSystem:getRecruitmentStats()
+    end
+    return {}
+end
+
+-- Méthodes pour contrôler le système de menu contextuel (Phase 4)
+function RealmWorld:handleMenuRequest(playerId, villagerId)
+    if self.contextMenuSystem then
+        return self.contextMenuSystem:handleMenuRequest(playerId, villagerId)
+    end
+    return {
+        success = false,
+        reason = "system_not_found",
+        message = "Système de menu contextuel indisponible!"
+    }
+end
+
+function RealmWorld:handleTaskAssignment(playerId, villagerId, taskId)
+    if self.contextMenuSystem then
+        return self.contextMenuSystem:handleTaskAssignment(playerId, villagerId, taskId)
+    end
+    return {
+        success = false,
+        reason = "system_not_found",
+        message = "Système de menu contextuel indisponible!"
+    }
+end
+
+function RealmWorld:closeVillagerMenu(playerId, villagerId)
+    if self.contextMenuSystem then
+        local result = self.contextMenuSystem:handleMenuClose(playerId, villagerId)
+        
+        -- Si on utilise le système optimisé, notifier la fermeture manuelle
+        if self.interactionSystem and self.interactionSystem.handleMenuManualClose then
+            self.interactionSystem:handleMenuManualClose(playerId, villagerId)
+        end
+        
+        return result
+    end
+    return {
+        success = false,
+        reason = "system_not_found",
+        message = "Système de menu contextuel indisponible!"
+    }
+end
+
+function RealmWorld:getMenuStats()
+    if self.contextMenuSystem then
+        return self.contextMenuSystem:getMenuStats()
+    end
+    return {}
+end
+
+-- Méthodes pour contrôler le système de zones d'arbres (Phase 5)
+function RealmWorld:forceSpawnTreeZone(position, config)
+    if self.treeSpawnSystem then
+        return self.treeSpawnSystem:forceSpawnTreeZone(position, config)
+    end
+    return nil
+end
+
+function RealmWorld:getTreeStats()
+    if self.treeSpawnSystem then
+        return self.treeSpawnSystem:getTreeStats()
+    end
+    return {}
+end
+
+function RealmWorld:setTreeDebug(enabled)
+    if self.treeSpawnSystem then
+        self.treeSpawnSystem:toggleDebug()
+    end
+end
+
+function RealmWorld:toggleTreeDebug()
+    if self.treeSpawnSystem then
+        self.treeSpawnSystem:toggleDebug()
+        return self.treeSpawnSystem.debug
+    end
+    return false
 end
 
 return RealmWorld

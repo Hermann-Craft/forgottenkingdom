@@ -8,14 +8,12 @@ function WorldServer:initialize(characterName)
     self.udp = require(_G.libDir .. "udp_client"):new()
     self.world = nil
     
-    -- Mining system
-    self.nearbyMines = {} -- Table des mines à proximité {mineId = {canMine, goldAmount, maxGold, state}}
     self.uiManager = nil -- Sera assigné par la scene
 
     self.tcp.callbacks.recv = function (data)
         local packet = _G.bitser.loads(data)
         
-        -- Vérifier que packet est bien une table
+        -- Vérifier que packet est bien une tableÉ
         if type(packet) ~= "table" then
             print("[WORLD-SERVER] Erreur de désérialisation TCP:", packet)
             return
@@ -34,19 +32,6 @@ function WorldServer:initialize(characterName)
             elseif packet.status == 404 then
                 print("world not found")
             end
-        elseif packet.id == "mining_available" then
-            -- Une mine est devenue disponible pour le mining
-            self.nearbyMines[packet.data.mineId] = {
-                canMine = packet.data.canMine,
-                goldAmount = packet.data.goldAmount,
-                maxGold = packet.data.maxGold,
-                state = packet.data.state
-            }
-            print("[MINING] Mine disponible:", packet.data.mineId, "- Or:", packet.data.goldAmount .. "/" .. packet.data.maxGold)
-        elseif packet.id == "mining_unavailable" then
-            -- Le joueur s'est éloigné d'une mine
-            self.nearbyMines[packet.data.mineId] = nil
-            print("[MINING] Mine indisponible:", packet.data.mineId)
         elseif packet.id == "mining_result" then
             -- Résultat d'une tentative de mining
             if packet.data.success then
@@ -74,11 +59,56 @@ function WorldServer:initialize(characterName)
             if self.world then
                 self.world:updateMineState(packet.data.mineId, packet.data)
             end
-            
-            -- Mettre à jour notre cache si on est près de cette mine
-            if self.nearbyMines[packet.data.mineId] then
-                self.nearbyMines[packet.data.mineId].goldAmount = packet.data.goldAmount
-                self.nearbyMines[packet.data.mineId].state = packet.data.state
+        elseif packet.id == "recruitment_result" then
+            -- Résultat d'une tentative de recrutement
+            if packet.data.success then
+                print("[VILLAGER] Recrutement réussi! -", packet.data.goldSpent, "or →", packet.data.villagerName, "rejoint", packet.data.clanName)
+                
+                -- Notification UI de succès
+                if self.uiManager then
+                    self.uiManager:onRecruitmentSuccess(packet.data.villagerName, packet.data.goldSpent)
+                end
+            else
+                print("[VILLAGER] Recrutement échoué:", packet.data.message or packet.data.reason)
+                
+                -- Notification UI d'erreur
+                if self.uiManager then
+                    self.uiManager:onRecruitmentError(packet.data.message or packet.data.reason)
+                end
+            end
+        elseif packet.id == "villager_menu_data" then
+            -- Données du menu contextuel d'un villageois
+            if packet.data.success then
+                print("[VILLAGER] Menu reçu pour:", packet.data.villagerName, "- Tâche actuelle:", packet.data.currentTask)
+                
+                -- Ouvrir l'interface du menu contextuel
+                if self.uiManager then
+                    self.uiManager:openVillagerMenu(packet.data)
+                end
+            else
+                print("[VILLAGER] Erreur menu:", packet.data.message or packet.data.reason)
+                
+                -- Notification d'erreur
+                if self.uiManager then
+                    self.uiManager:onRecruitmentError(packet.data.message or packet.data.reason)
+                end
+            end
+        elseif packet.id == "task_assignment_result" then
+            -- Résultat d'une assignation de tâche
+            if packet.data.success then
+                print("[VILLAGER] Tâche assignée:", packet.data.oldTask, "→", packet.data.newTask)
+                
+                -- Notification de succès
+                if self.uiManager then
+                    self.uiManager:onTaskAssignmentSuccess(packet.data.newTask, packet.data.villagerName)
+                end
+            else
+                print("[VILLAGER] Erreur assignation:", packet.data.message or packet.data.reason)
+                
+                -- Notification d'erreur
+                if self.uiManager then
+                    self.uiManager:onRecruitmentError(packet.data.message or packet.data.reason)
+                end
             end
         end
     end
@@ -191,10 +221,146 @@ function WorldServer:draw(...)
     end
 end
 
+-- === NOUVEAUX SYSTÈMES DE CALCUL DE PROXIMITÉ ===
+
+function WorldServer:calculateNearbyMines()
+    -- Calculer les mines proches en temps réel depuis world.entities
+    local nearbyMines = {}
+    
+    if not self.world or not self.world.entities then
+        return nearbyMines
+    end
+    
+    -- Trouver le joueur actuel
+    local playerEntity = nil
+    for _, entity in ipairs(self.world.entities) do
+        if entity.id == _G.user.email then
+            playerEntity = entity
+            break
+        end
+    end
+    
+    if not playerEntity or not playerEntity.components["Position"] then
+        return nearbyMines
+    end
+    
+    local playerPos = playerEntity.components["Position"].position
+    local playerDim = playerEntity.components["Dimension"]
+    
+    -- Chercher les mines proches
+    for _, entity in ipairs(self.world.entities) do
+        local resources = entity.components["Resources"]
+        local entityPos = entity.components["Position"]
+        local entityDim = entity.components["Dimension"]
+        
+        -- Si c'est une mine d'or
+        if resources and entityPos and entityDim and resources.goldAmount then
+            -- Calculer la distance
+            local distance = math.sqrt(
+                (playerPos.x - entityPos.position.x)^2 + 
+                (playerPos.y - entityPos.position.y)^2
+            )
+            
+            -- Distance de proximité pour les mines : 100 pixels
+            if distance <= 100 then
+                nearbyMines[entity.id] = {
+                    canMine = resources.goldAmount > 0 and resources.state ~= "respawning",
+                    goldAmount = resources.goldAmount,
+                    maxGold = resources.maxGold,
+                    state = resources.state,
+                    distance = distance
+                }
+            end
+        end
+    end
+    
+    return nearbyMines
+end
+
+function WorldServer:calculateNearbyVillagers()
+    -- Calculer les villageois proches en temps réel depuis world.entities
+    local nearbyVillagers = {}
+    
+    if not self.world or not self.world.entities then
+        return nearbyVillagers
+    end
+    
+    -- Trouver le joueur actuel
+    local playerEntity = nil
+    for _, entity in ipairs(self.world.entities) do
+        if entity.id == _G.user.email then
+            playerEntity = entity
+            break
+        end
+    end
+    
+    if not playerEntity or not playerEntity.components["Position"] then
+        return nearbyVillagers
+    end
+    
+    local playerPos = playerEntity.components["Position"].position
+    local playerClan = playerEntity.components["Clan"]
+    local playerWallet = playerEntity.components["Wallet"]
+    
+    -- Chercher les villageois proches
+    for _, entity in ipairs(self.world.entities) do
+        local villager = entity.components["Villager"]
+        local entityPos = entity.components["Position"]
+        local entityDim = entity.components["Dimension"]
+        local entityClan = entity.components["Clan"]
+        local entityName = entity.components["Name"]
+        local hireable = entity.components["Hireable"]
+        local worker = entity.components["Worker"]
+        
+        -- Si c'est un villageois
+        if villager and entityPos and entityDim then
+            -- Calculer la distance
+            local distance = math.sqrt(
+                (playerPos.x - entityPos.position.x)^2 + 
+                (playerPos.y - entityPos.position.y)^2
+            )
+            
+            -- Distance de proximité pour les villageois : 80 pixels
+            if distance <= 80 then
+                local villagerData = {
+                    distance = distance,
+                    villagerName = entityName and entityName.name or "Villageois",
+                    canRecruit = false,
+                    canMenu = false
+                }
+                
+                -- Vérifier si recrutables (Hireable)
+                if hireable and playerWallet then
+                    villagerData.canRecruit = true
+                    villagerData.type = "Hireable"
+                    villagerData.cost = 25
+                    villagerData.canAfford = playerWallet.wallet >= 25
+                    villagerData.playerGold = playerWallet.wallet
+                end
+                
+                -- Vérifier si Workers (menu contextuel)
+                if worker and playerClan and entityClan then
+                    local isOwner = playerClan.clanName == entityClan.clanName
+                    villagerData.canMenu = isOwner
+                    villagerData.type = "Worker"
+                    villagerData.isOwner = isOwner
+                    villagerData.clanName = entityClan.clanName
+                end
+                
+                nearbyVillagers[entity.id] = villagerData
+            end
+        end
+    end
+    
+    return nearbyVillagers
+end
+
 function WorldServer:tryMining()
     -- Trouver une mine proche et disponible
+    local nearbyMines = self:calculateNearbyMines()
     local availableMineId = nil
-    for mineId, mineData in pairs(self.nearbyMines) do
+    
+    for mineId, mineData in pairs(nearbyMines) do
         if mineData.canMine and mineData.goldAmount > 0 then
             availableMineId = mineId
             break
@@ -217,9 +383,89 @@ function WorldServer:tryMining()
     end
 end
 
+function WorldServer:tryRecruitment()
+    -- Trouver un villageois recrutables proche
+    local nearbyVillagers = self:calculateNearbyVillagers()
+    local availableVillagerId = nil
+    
+    for villagerId, villagerData in pairs(nearbyVillagers) do
+        if villagerData.canRecruit and villagerData.canAfford then
+            availableVillagerId = villagerId
+            break
+        end
+    end
+    
+    if availableVillagerId then
+        -- Envoyer la demande de recrutement au serveur via TCP
+        self.tcp:send(_G.bitser.dumps({
+            id = "player_recruit_villager",
+            data = {
+                villagerId = availableVillagerId
+            }
+        }))
+        print("[CLIENT] Demande de recrutement envoyée pour villageois:", availableVillagerId)
+        return true
+    else
+        print("[CLIENT] Aucun villageois recrutables ou pas assez d'or")
+        return false
+    end
+end
+
+function WorldServer:tryOpenVillagerMenu()
+    -- Trouver un villageois worker proche
+    local nearbyVillagers = self:calculateNearbyVillagers()
+    local availableVillagerId = nil
+    
+    for villagerId, villagerData in pairs(nearbyVillagers) do
+        if villagerData.canMenu and villagerData.isOwner then
+            availableVillagerId = villagerId
+            break
+        end
+    end
+    
+    if availableVillagerId then
+        -- Envoyer la demande d'ouverture de menu au serveur via TCP
+        self.tcp:send(_G.bitser.dumps({
+            id = "player_open_villager_menu",
+            data = {
+                villagerId = availableVillagerId
+            }
+        }))
+        print("[CLIENT] Demande d'ouverture menu pour villageois:", availableVillagerId)
+        return true
+    else
+        print("[CLIENT] Aucun villageois worker proche ou pas propriétaire")
+        return false
+    end
+end
+
+function WorldServer:assignTaskToVillager(villagerId, taskId)
+    -- Envoyer la demande d'assignation de tâche au serveur via TCP
+    self.tcp:send(_G.bitser.dumps({
+        id = "player_assign_task",
+        data = {
+            villagerId = villagerId,
+            taskId = taskId
+        }
+    }))
+    print("[CLIENT] Demande d'assignation tâche pour villageois:", villagerId, "→ Tâche:", taskId)
+    return true
+end
+
 function WorldServer:hasNearbyMines()
-    for mineId, mineData in pairs(self.nearbyMines) do
+    local nearbyMines = self:calculateNearbyMines()
+    for mineId, mineData in pairs(nearbyMines) do
         if mineData.canMine and mineData.goldAmount > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function WorldServer:hasNearbyVillagers()
+    local nearbyVillagers = self:calculateNearbyVillagers()
+    for villagerId, villagerData in pairs(nearbyVillagers) do
+        if villagerData.canRecruit or villagerData.canMenu then
             return true
         end
     end
@@ -251,8 +497,34 @@ function WorldServer:getMiningInfo()
     return {
         playerGold = playerGold,
         maxGold = maxGold,
-        nearbyMines = self.nearbyMines,
+        nearbyMines = self:calculateNearbyMines(),
         hasAvailableMines = self:hasNearbyMines()
+    }
+end
+
+function WorldServer:getVillagerInfo()
+    -- Récupérer l'or depuis l'entité joueur
+    local playerGold = 0
+    local maxGold = 100
+    
+    if self.world and self.world.entities then
+        for _, entity in ipairs(self.world.entities) do
+            if entity.id == _G.user.email then -- L'ID du joueur est son email
+                local wallet = entity.components and entity.components["Wallet"]
+                if wallet then
+                    playerGold = wallet.wallet or 0
+                    maxGold = wallet.maxWallet or 100
+                end
+                break
+            end
+        end
+    end
+    
+    return {
+        playerGold = playerGold,
+        maxGold = maxGold,
+        nearbyVillagers = self:calculateNearbyVillagers(),
+        hasAvailableVillagers = self:hasNearbyVillagers()
     }
 end
 

@@ -24,5 +24,12 @@ return {
     Speed       = require(_G.componentsDir .. "component-speed"),
     Wallet      = require(_G.componentsDir .. "component-wallet"),
     Texture     = require(_G.componentsDir .. "component-texture"),
-    Resources   = require(_G.componentsDir .. "component-resources")
+    Resources   = require(_G.componentsDir .. "component-resources"),
+    -- Nouveaux composants pour le système de villageois (Phase 1-5)
+    Villager    = require(_G.componentsDir .. "component-villager"),
+    Hireable    = require(_G.componentsDir .. "component-hireable"),
+    Worker      = require(_G.componentsDir .. "component-worker"),
+    Target      = require(_G.componentsDir .. "component-target"),
+    Resource    = require(_G.componentsDir .. "component-resource"),  -- Phase 5
+    TreeZone    = require(_G.componentsDir .. "component-tree-zone")  -- Phase 5
 }
