@@ -8,6 +8,10 @@ _G.entitiesDir  = _G.gameDir .. "entities."
 _G.systemsDir   = _G.gameDir .. "systems."
 _G.worldsDir   = _G.gameDir .. "worlds."
 
+-- OPTION DEBUG: Désactiver les optimisations d'entités si nécessaire
+-- Mettre à true pour revenir à l'ancien système d'envoi
+_G.DISABLE_ENTITY_OPTIMIZATION = false  -- Changer à true pour debug
+
 local redis = require(_G.libDir .. "redis")
 -- print(redis)
 _G.RedisClient = redis.connect('127.0.0.1', 6379)
@@ -82,21 +86,30 @@ local VillagerEntity = require(_G.entitiesDir .. "entity-villager")
 _G.Server.Tcp.handshake = handshake
 _G.Server.Udp.handshake = handshake
 
-function love.load(arg)
+love.load = function()
+    math.randomseed(os.time())
+    
+    -- Initialiser le serveur TCP/UDP
     _G.Server.Tcp:listen(8082)
     _G.Server.Udp:listen(8082)
-    for k, v in pairs(arg) do
-        print(k, v)
-        if k == 1 then
-        end
+    
+    -- Système d'optimisation réseau - GESTIONNAIRE D'ENTITÉS (conditionnel)
+    if not _G.DISABLE_ENTITY_OPTIMIZATION then
+        local EntityUpdateManager = require(_G.libDir .. "engine/entity-update-manager")
+        _G.EntityUpdateManager = EntityUpdateManager:new()
+        print("🚀 [OPTIMISATION] Gestionnaire de mises à jour d'entités activé")
+    else
+        print("⚠️  [DEBUG] Optimisations d'entités DÉSACTIVÉES - Mode compatibilité")
     end
     
-    -- Phase 5 : Système villageois complet avec ressources
-    print("[VILLAGER] ✅ Système villageois Phase 5 démarré - Spawn, IA, menus et ressources")
+    -- Le RealmWorld est déjà initialisé au début du fichier
+    -- _G.RealmWorld = require(_G.worldsDir .. "world-realm"):new() -- Déjà fait ligne 65
+    
+    print("🚀 [SERVEUR] Démarré sur le port 8082")
+    print("🚀 [VILLAGER] Système villageois Phase 5 démarré - Spawn, IA, menus et ressources")
 end
 
 _G.Server.Udp.callbacks.recv = function (data, clientid)
-    -- print("[".. tostring(clientid) .. "]: " .. packet.id)
     local packet = _G.bitser.loads(data)
 
     if packet.id == "connection" then
@@ -129,102 +142,102 @@ _G.Server.Udp.callbacks.recv = function (data, clientid)
     elseif packet.id == "player_move" then
         local uid = _G.Server:getClientByUdp(clientid)
         
-        -- Mettre à jour lastSeen pour maintenir la connexion active
+        -- OPTIMISATION: Mise à jour lastSeen groupée
         if uid and _G.Server.Clients[uid] then
             _G.Server.Clients[uid].lastSeen = love.timer.getTime()
-        end
-        
-        local entity = _G.RealmWorld:getEntityById(uid)
-        if entity then
-            local tranformComponent = entity:getComponent("Position")
-            if packet.cmd == "up" then
-                tranformComponent.position.y = tranformComponent.position.y - 2
-            elseif packet.cmd == "down" then
-                tranformComponent.position.y = tranformComponent.position.y + 2
-            elseif packet.cmd == "left" then
-                tranformComponent.position.x = tranformComponent.position.x - 2
-            elseif packet.cmd == "right" then
-                tranformComponent.position.x = tranformComponent.position.x + 2
+            
+            local entity = _G.RealmWorld:getEntityById(uid)
+            if entity then
+                local transformComponent = entity:getComponent("Position")
+                -- OPTIMISATION: Mouvement plus fluide avec vitesse variable
+                local moveSpeed = 3 -- Vitesse de base
+                
+                if packet.cmd == "up" then
+                    transformComponent.position.y = transformComponent.position.y - moveSpeed
+                elseif packet.cmd == "down" then
+                    transformComponent.position.y = transformComponent.position.y + moveSpeed
+                elseif packet.cmd == "left" then
+                    transformComponent.position.x = transformComponent.position.x - moveSpeed
+                elseif packet.cmd == "right" then
+                    transformComponent.position.x = transformComponent.position.x + moveSpeed
+                end
             end
-        end    
+        end
     elseif packet.id == "player_shoot" then
         local uid = _G.Server:getClientByUdp(clientid)
         
-        -- Mettre à jour lastSeen pour maintenir la connexion active
         if uid and _G.Server.Clients[uid] then
             _G.Server.Clients[uid].lastSeen = love.timer.getTime()
-        end
-        
-        local entity = _G.RealmWorld:getEntityById(uid)
-        if entity then
-            entity:shoot()
+            
+            local entity = _G.RealmWorld:getEntityById(uid)
+            if entity then
+                entity:shoot()
+            end
         end
     elseif packet.id == "player_pvp" then
         local uid = _G.Server:getClientByUdp(clientid)
         
-        -- Mettre à jour lastSeen pour maintenir la connexion active
         if uid and _G.Server.Clients[uid] then
             _G.Server.Clients[uid].lastSeen = love.timer.getTime()
-        end
-        
-        local entity = _G.RealmWorld:getEntityById(uid)
-        if entity then
-            entity:getComponent("Player").pvp = not entity:getComponent("Player").pvp
+            
+            local entity = _G.RealmWorld:getEntityById(uid)
+            if entity then
+                entity:getComponent("Player").pvp = not entity:getComponent("Player").pvp
+            end
         end
     elseif packet.id == "player_orientation" then
         local uid = _G.Server:getClientByUdp(clientid)
         
-        -- Mettre à jour lastSeen pour maintenir la connexion active
         if uid and _G.Server.Clients[uid] then
             _G.Server.Clients[uid].lastSeen = love.timer.getTime()
-        end
-        
-        local entity = _G.RealmWorld:getEntityById(uid)
-        local m = packet.data
-        if entity then
-            local position = entity:getComponent("Position").position
-            local dimension = entity:getComponent("Dimension")
-            local orientation = entity:getComponent("Orientation").orientation
-            entity:getComponent("Orientation").orientation = math.atan2(m.y - position.y, m.x - position.x + dimension.width / 2)
+            
+            local entity = _G.RealmWorld:getEntityById(uid)
+            local m = packet.data
+            if entity then
+                local position = entity:getComponent("Position").position
+                local dimension = entity:getComponent("Dimension")
+                local orientation = entity:getComponent("Orientation")
+                if orientation then
+                    orientation.orientation = math.atan2(m.y - position.y, m.x - position.x + dimension.width / 2)
+                end
+            end
         end
     elseif packet.id == "player_shield" then
         local uid = _G.Server:getClientByUdp(clientid)
         
-        -- Mettre à jour lastSeen pour maintenir la connexion active
         if uid and _G.Server.Clients[uid] then
             _G.Server.Clients[uid].lastSeen = love.timer.getTime()
-        end
-        
-        local entity = _G.RealmWorld:getEntityById(uid)
-        if entity then
-            local shield = entity:getComponent("Shield")
-            if shield then
-                shield.activated = packet.data
+            
+            local entity = _G.RealmWorld:getEntityById(uid)
+            if entity then
+                local shield = entity:getComponent("Shield")
+                if shield then
+                    shield.activated = packet.data
+                end
             end
         end
     elseif packet.id == "player_mine" then
         local uid = _G.Server:getClientByUdp(clientid)
         
-        -- Mettre à jour lastSeen pour maintenir la connexion active
         if uid and _G.Server.Clients[uid] then
             _G.Server.Clients[uid].lastSeen = love.timer.getTime()
-        end
-        
-        if uid and packet.data and packet.data.mineId then
-            -- Gérer la demande de récolte
-            local result = _G.RealmWorld:handleMiningRequest(uid, packet.data.mineId)
             
-            -- Envoyer le résultat au joueur via TCP pour garantir la réception
-            if _G.Server.Clients[uid] and _G.Server.Clients[uid].tcp then
-                _G.Server.Tcp:send(_G.bitser.dumps({
-                    id = "mining_result",
-                    data = result
-                }), _G.Server.Clients[uid].tcp)
-            end
-            
-            -- OPTIMISATION: Logs debug réduits pour éviter le spam (seulement échecs)
-            if not result.success then
-                print("[MINING] Échec récolte pour joueur", uid, ":", result.reason)
+            if packet.data and packet.data.mineId then
+                -- Gérer la demande de récolte
+                local result = _G.RealmWorld:handleMiningRequest(uid, packet.data.mineId)
+                
+                -- Envoyer le résultat au joueur via TCP pour garantir la réception
+                if _G.Server.Clients[uid].tcp then
+                    _G.Server.Tcp:send(_G.bitser.dumps({
+                        id = "mining_result",
+                        data = result
+                    }), _G.Server.Clients[uid].tcp)
+                end
+                
+                -- OPTIMISATION: Logs debug réduits pour éviter le spam (seulement échecs)
+                if not result.success and _G.DEBUG_MINING then
+                    print("[MINING] Échec récolte pour joueur", uid, ":", result.reason)
+                end
             end
         end
     end
@@ -369,6 +382,14 @@ _G.Server.Tcp.callbacks.recv = function (data, clientid)
         -- Créer et ajouter l'entité
         _G.RealmWorld:addEntity(PlayerEntity:new(playerId, playerData))
         print("[TCP] Nouvelle entité créée pour", playerId)
+        
+        -- CORRECTION: Forcer la synchronisation immédiate du joueur
+        local playerEntity = _G.RealmWorld:getEntityById(playerId)
+        if playerEntity then
+            playerEntity:forceImmediateSync()
+            print("[TCP] ✅ Synchronisation joueur forcée pour", playerId)
+        end
+        
         _G.Server.Tcp:send(_G.bitser.dumps({
            id = "world_load",
            world = _G.RealmWorld:toNbt()
@@ -615,10 +636,36 @@ _G.Server.Tcp.callbacks.disconnect = function (clientid)
     end
 end
 
-function love.update (dt)
+-- SYSTÈME DE MONITORING DES OPTIMISATIONS RÉSEAU
+local lastStatsReport = 0
+local statsReportInterval = 10  -- Afficher les stats toutes les 10 secondes
+
+function love.update(dt)
     _G.Server.Tcp:update(dt)
     _G.Server.Udp:update(dt)
-    _G.RealmWorld:update(dt)
+    
+    if _G.RealmWorld then
+        _G.RealmWorld:update(dt)
+    end
+    
+    -- OPTIMISATION: Traiter les batchs d'entités
+    if _G.EntityUpdateManager and not _G.DISABLE_ENTITY_OPTIMIZATION then
+        _G.EntityUpdateManager:processBatch(dt)
+        
+        -- Afficher les statistiques périodiquement
+        local currentTime = love.timer.getTime()
+        if (currentTime - lastStatsReport) >= statsReportInterval then
+            local stats = _G.EntityUpdateManager:getStats()
+            print("[NETWORK-STATS] 📊 Performances réseau:")
+            print("  - Mises à jour/s:", string.format("%.1f", stats.updatesPerSecond))
+            print("  - Batchs/s:", string.format("%.1f", stats.batchesPerSecond)) 
+            print("  - Taille batch moy:", string.format("%.1f", stats.averageBatchSize))
+            print("  - File d'attente:", stats.queueSize)
+            print("  - Joueurs notifiés:", stats.playersNotified)
+            
+            lastStatsReport = currentTime
+        end
+    end
 end
 
 function love.quit()

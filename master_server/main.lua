@@ -70,7 +70,7 @@ function initializeTestData()
     end
     
     -- Mondes de jeu
-    RedisClient:hset("world:nexus", "ip", "127.0.0.1")
+    RedisClient:hset("world:nexus", "ip", "192.168.1.58")
     RedisClient:hset("world:nexus", "port", "8082")
     RedisClient:hset("world:nexus", "default", true)
 

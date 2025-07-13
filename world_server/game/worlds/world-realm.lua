@@ -38,7 +38,7 @@ function RealmWorld:initialize()
     self.height = 2000
     
     -- Configuration debug pour les systèmes
-    self.debugInteraction = true -- Changez à true pour activer les logs du système d'interaction
+    self.debugInteraction = false -- Changez à true pour activer les logs du système d'interaction
     self.debugVillagers = false -- Debug villageois activé par défaut pour la phase 2
     
     -- Systèmes de jeu

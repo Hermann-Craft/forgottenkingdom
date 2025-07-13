@@ -3,6 +3,8 @@
 -- Ce système ne gère plus que les validations côté serveur pour les actions critiques
 local InteractionSystem = require(_G.libDir .. "middleclass")("InteractionSystem")
 local System = require(_G.engineDir .. "system")
+
+
 InteractionSystem.static.super = System
 
 local CollisionSystem = require(_G.systemsDir .. "system-collision")
@@ -130,21 +132,45 @@ end
 
 function InteractionSystem:notifyMineStateChange(mine)
     local resources = mine:getComponent("Resources")
+    local minePosition = mine:getComponent("Position").position
     
-    -- Notifier tous les clients connectés du changement d'état
+    -- OPTIMISATION: Notifier seulement les joueurs dans un rayon de 300 pixels de la mine
+    local notificationRadius = 300
+    local playersNotified = 0
+    
     for playerId, clientData in pairs(_G.Server.Clients or {}) do
         if clientData.tcp then
-            _G.Server.Tcp:send(_G.bitser.dumps({
-                id = "mine_state_update",
-                data = {
-                    mineId = mine.id,
-                    goldAmount = resources.goldAmount,
-                    maxGold = resources.maxGold,
-                    state = resources.state,
-                    respawnTimer = resources.respawnTimer
-                }
-            }), clientData.tcp)
+            -- Vérifier la distance du joueur par rapport à la mine
+            local player = self.world:getEntityById(playerId)
+            if player then
+                local playerPosition = player:getComponent("Position")
+                if playerPosition then
+                    local distance = math.sqrt(
+                        (playerPosition.position.x - minePosition.x)^2 + 
+                        (playerPosition.position.y - minePosition.y)^2
+                    )
+                    
+                    -- Envoyer seulement aux joueurs proches
+                    if distance <= notificationRadius then
+                        _G.Server.Tcp:send(_G.bitser.dumps({
+                            id = "mine_state_update",
+                            data = {
+                                mineId = mine.id,
+                                goldAmount = resources.goldAmount,
+                                maxGold = resources.maxGold,
+                                state = resources.state,
+                                respawnTimer = resources.respawnTimer
+                            }
+                        }), clientData.tcp)
+                        playersNotified = playersNotified + 1
+                    end
+                end
+            end
         end
+    end
+    
+    if self.debugMode then
+        print("[INTERACTION] Mine", mine.id, "notification envoyée à", playersNotified, "joueur(s) proches")
     end
 end
 

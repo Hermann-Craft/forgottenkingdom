@@ -112,17 +112,13 @@ function RecruitSystem:handleRecruitmentRequest(playerId, villagerId)
     if not canInteract then
         if self.debugMode then
             print("[RECRUIT] ❌ Joueur", playerId, "ne peut pas interagir avec villageois", villagerId)
-            -- Calculer la distance réelle pour debug (seulement pour système legacy)
-            if interactionSystem.class.name ~= "InteractionOptimizedSystem" then
-                local playerPos = player:getComponent("Position")
-                local villagerPos = villager:getComponent("Position")
-                local villagerDim = villager:getComponent("Dimension")
-                if playerPos and villagerPos and villagerDim then
-                    local distance = interactionSystem:calculateDistanceVillager(playerPos.position, villagerPos.position, villagerDim)
-                    print("[RECRUIT] Distance réelle calculée:", distance, "pixels (seuil:", interactionSystem.villagerInteractionDistance, ")")
-                end
+            -- Calculer la distance réelle pour debug avec le système de collision
+            local collisionSystem = self:getCollisionSystem()
+            if collisionSystem then
+                local distance = collisionSystem:calculateDistance(player, villager)
+                print("[RECRUIT] Distance réelle calculée:", math.floor(distance), "pixels")
             else
-                print("[RECRUIT] Distance non calculée (système optimisé utilise sa propre logique)")
+                print("[RECRUIT] Distance non calculée (système de collision non trouvé)")
             end
         end
         return {
@@ -249,6 +245,26 @@ function RecruitSystem:getInteractionSystem()
     
     if self.debugMode then
         print("[RECRUIT] ❌ Système d'interaction NON TROUVÉ!")
+    end
+    return nil
+end
+
+function RecruitSystem:getCollisionSystem()
+    -- Trouver le système de collision dans le monde
+    for _, system in ipairs(self.world.systems) do
+        if system.class then
+            local className = system.class.name
+            if className == "CollisionSystem" then
+                if self.debugMode then
+                    print("[RECRUIT] ✅ Système de collision trouvé:", tostring(system))
+                end
+                return system
+            end
+        end
+    end
+    
+    if self.debugMode then
+        print("[RECRUIT] ❌ Système de collision NON TROUVÉ!")
     end
     return nil
 end

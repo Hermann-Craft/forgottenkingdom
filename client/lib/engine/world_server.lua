@@ -9,6 +9,24 @@ function WorldServer:initialize(characterName)
     self.world = nil
     
     self.uiManager = nil -- Sera assigné par la scene
+    
+    -- OPTIMISATION: Throttling réseau
+    self.lastMousePosition = {x = 0, y = 0}
+    self.lastMouseSendTime = 0
+    self.mouseSendInterval = 0.05 -- Envoyer max 20 fois par seconde
+    self.mouseMoveThreshold = 5 -- Seuil de mouvement minimal en pixels
+    
+    self.lastMovementSendTime = 0
+    self.movementSendInterval = 0.016 -- Envoyer max 60 fois par seconde pour les mouvements
+    
+    -- Cache des états de touches pour éviter les envois redondants
+    self.lastKeyState = {
+        up = false,
+        down = false,
+        left = false,
+        right = false,
+        shoot = false
+    }
 
     self.tcp.callbacks.recv = function (data)
         local packet = _G.bitser.loads(data)
@@ -160,6 +178,9 @@ function WorldServer:update(dt)
         self.world:update(dt)
     end
 
+    -- OPTIMISATION RÉSEAU: Throttling intelligent
+    local currentTime = love.timer.getTime()
+    
     local z = love.keyboard.isDown("z");
     local w = love.keyboard.isDown("w");
     local q = love.keyboard.isDown("q");
@@ -169,49 +190,85 @@ function WorldServer:update(dt)
     local lshift = love.keyboard.isDown("lshift");
 
     if self.world ~= nil then
+        -- OPTIMISATION: N'envoyer les mouvements que s'ils ont changé et respecter l'intervalle
+        local currentKeyState = {
+            up = z or w,
+            down = s,
+            left = q or a,
+            right = d
+        }
+        
+        local keyStateChanged = false
+        for key, state in pairs(currentKeyState) do
+            if self.lastKeyState[key] ~= state then
+                keyStateChanged = true
+                break
+            end
+        end
+        
+        -- Envoyer les mouvements seulement si changement ou intervalle respecté
+        if keyStateChanged or (currentTime - self.lastMovementSendTime) >= self.movementSendInterval then
+            if currentKeyState.up and not self.lastKeyState.up then
+                self.udp:send(_G.bitser.dumps({
+                    id = "player_move",
+                    cmd = "up"
+                }))
+            end
 
-        if z or w then
-            self.udp:send(_G.bitser.dumps({
-                id = "player_move",
-                cmd = "up"
-            }))
+            if currentKeyState.left and not self.lastKeyState.left then
+                self.udp:send(_G.bitser.dumps({
+                    id = "player_move",
+                    cmd = "left"
+                }))
+            end
+
+            if currentKeyState.right and not self.lastKeyState.right then
+                self.udp:send(_G.bitser.dumps({
+                    id = "player_move",
+                    cmd = "right"
+                }))
+            end
+
+            if currentKeyState.down and not self.lastKeyState.down then
+                self.udp:send(_G.bitser.dumps({
+                    id = "player_move",
+                    cmd = "down"
+                }))
+            end
+            
+            self.lastKeyState = currentKeyState
+            self.lastMovementSendTime = currentTime
         end
 
-        if q or a then
-            self.udp:send(_G.bitser.dumps({
-                id = "player_move",
-                cmd = "left"
-            }))
-        end
-
-        if d then
-            self.udp:send(_G.bitser.dumps({
-                id = "player_move",
-                cmd = "right"
-            }))
-        end
-
-        if s then
-            self.udp:send(_G.bitser.dumps({
-                id = "player_move",
-                cmd = "down"
-            }))
-        end
-
+        -- OPTIMISATION: Gérer le tir seulement au clic (pas en continu)
         local mouseIsDown = love.mouse.isDown(1)
-        if mouseIsDown then
+        if mouseIsDown and not self.lastKeyState.shoot then
             local mx, my = self.world.camera:mousePosition()
             self.udp:send(_G.bitser.dumps({
                 id = "player_shoot",
                 data = { x = mx, y = my },
             }))
         end
+        self.lastKeyState.shoot = mouseIsDown
 
-        local mx, my = self.world.camera:mousePosition()
-        self.udp:send(_G.bitser.dumps({
-            id = "player_orientation",
-            data = { x = mx, y = my },
-        }))
+        -- OPTIMISATION MAJEURE: N'envoyer l'orientation que si elle a changé significativement
+        if (currentTime - self.lastMouseSendTime) >= self.mouseSendInterval then
+            local mx, my = self.world.camera:mousePosition()
+            local dx = math.abs(mx - self.lastMousePosition.x)
+            local dy = math.abs(my - self.lastMousePosition.y)
+            
+            -- N'envoyer que si le mouvement dépasse le seuil
+            if dx >= self.mouseMoveThreshold or dy >= self.mouseMoveThreshold then
+                self.udp:send(_G.bitser.dumps({
+                    id = "player_orientation",
+                    data = { x = mx, y = my },
+                }))
+                
+                self.lastMousePosition.x = mx
+                self.lastMousePosition.y = my
+                self.lastMouseSendTime = currentTime
+            end
+        end
     end
 end
 

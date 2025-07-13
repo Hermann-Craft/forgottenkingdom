@@ -7,91 +7,110 @@ local Compositions = require(_G.gameDir .. "compositions")
 
 function VillagerAISystem:initialize(world, debugMode)
     System.initialize(self, world)
+    
+    -- Configuration de base
     self.debugMode = debugMode or false
+    self.updateFrequency = 2.0 -- OPTIMISATION: Ralentir à 2 secondes au lieu de 0.5
+    self.updateTimer = 0
     
-    -- Configuration de l'IA
-    self.AI_TICK_RATE = 0.5  -- 2 fois par seconde
-    self.aiTimer = 0
+    -- Timers pour les logs optimisés
+    self.logTimer = 0
+    self.detailedLogTimer = 0
     
-    -- Configuration mouvement aléatoire
-    self.IDLE_MOVE_CHANCE = 0.3  -- 30% de chance de bouger à chaque tick
-    self.IDLE_MOVE_DISTANCE = 50  -- Distance max de mouvement aléatoire
-    self.IDLE_MOVE_SPEED = 20  -- Vitesse du mouvement aléatoire
+    -- Paramètres de mouvement
+    self.IDLE_MOVE_SPEED = 30      -- Vitesse de déplacement libre
+    self.WORK_MOVE_SPEED = 50      -- Vitesse de déplacement au travail
+    self.FOLLOW_MOVE_SPEED = 70    -- Vitesse de suivi du maître
     
-    -- Limites du monde (à ajuster selon votre carte)
-    self.worldBounds = {
-        minX = 50,
-        maxX = 750,
-        minY = 50,
-        maxY = 550
-    }
+    -- Paramètres de comportement
+    self.FOLLOW_DISTANCE = 100     -- Distance de suivi du maître
+    self.WORK_RANGE = 150          -- Portée de recherche de travail
+    self.IDLE_CHANGE_TIME = 3.0    -- Temps entre changements de direction
     
-    if self.debugMode then
-        print("[VILLAGER AI] Système initialisé - Tick rate:", self.AI_TICK_RATE, "s")
-    end
+    -- Statistiques (pour monitoring)
+    self.totalVillagers = 0
+    self.activeWorkers = 0
+    self.idleVillagers = 0
+    
+    print("[VILLAGER AI] Système initialisé avec mode debug:", self.debugMode and "ACTIVÉ" or "DÉSACTIVÉ")
+    print("[VILLAGER AI] Fréquence de mise à jour:", self.updateFrequency, "secondes")
 end
 
 function VillagerAISystem:update(dt)
-    self.aiTimer = self.aiTimer + dt
+    self.updateTimer = self.updateTimer + dt
     
-    -- Mise à jour de l'IA selon le tick rate
-    if self.aiTimer >= self.AI_TICK_RATE then
-        self.aiTimer = 0
-        self:updateVillagerAI()
+    -- OPTIMISATION: Réduire la fréquence des logs et des calculs
+    if self.updateTimer >= self.updateFrequency then
+        self.updateTimer = 0
+        
+        -- Obtenir tous les villageois avec IA
+        local villagers = self.world:getEntitiesWithAtLeast({"Villager", "Position", "Target", "Speed", "Brain"})
+        
+        -- OPTIMISATION: Logs réduits - seulement événements importants
+        if self.debugMode and #villagers > 0 then
+            -- Log seulement toutes les 5 secondes au lieu de chaque update
+            self.logTimer = (self.logTimer or 0) + self.updateFrequency
+            if self.logTimer >= 5.0 then
+                print("[VILLAGER AI] Mise à jour IA pour", #villagers, "villageois")
+                self.logTimer = 0
+            end
+        end
+        
+        -- Traitement de l'IA
+        for _, villager in ipairs(villagers) do
+            self:processVillagerAI(villager)
+        end
     end
     
-    -- Mise à jour continue du mouvement
+    -- Mise à jour du mouvement continue (pour la fluidité)
     self:updateMovement(dt)
 end
 
+-- Remplacer l'ancienne méthode updateVillagerAI par une version optimisée
 function VillagerAISystem:updateVillagerAI()
-    -- Obtenir tous les villageois
-    local villagers = self.world:getEntitiesWithAtLeast({"Villager", "Brain"})
-    
-    -- Debug réduit: seulement périodiquement
-    if self.debugMode and #villagers > 0 and love.timer.getTime() % 10 < self.AI_TICK_RATE then
-        print("[VILLAGER AI] 📊 Mise à jour IA pour", #villagers, "villageois")
-    end
-    
-    local frozenCount = 0
-    local activeCount = 0
+    -- Cette méthode est maintenant obsolète, remplacée par update() optimisé
+    -- Rediriger vers la nouvelle logique
+    local villagers = self.world:getEntitiesWithAtLeast({"Villager", "Position", "Target", "Speed", "Brain"})
     
     for _, villager in ipairs(villagers) do
-        local brain = villager:getComponent("Brain")
-        
-        -- Vérifier si le menu de ce villageois est ouvert
-        if brain.menuOpen then
-            frozenCount = frozenCount + 1
-            -- Arrêter tout mouvement
-            local target = villager:getComponent("Target")
-            if target then
-                target.isMoving = false
-                target.destination = nil
-            end
-            -- Ignorer la logique comportementale
-            goto continue_villager
-        end
-        
-        activeCount = activeCount + 1
-        
-        if brain.task == TaskEnum.Idle then
-            self:handleIdleBehavior(villager)
-        elseif brain.task == TaskEnum.Follow then
-            self:handleFollowBehavior(villager)
-        elseif brain.task == TaskEnum.ChopWood then
-            self:handleChopWoodBehavior(villager)
-        elseif brain.task == TaskEnum.MineGold then
-            self:handleMineGoldBehavior(villager)
-        end
-        
-        ::continue_villager::
+        self:processVillagerAI(villager)
+    end
+end
+
+function VillagerAISystem:processVillagerAI(villager)
+    local brain = villager:getComponent("Brain")
+    local position = villager:getComponent("Position")
+    local target = villager:getComponent("Target")
+    local speed = villager:getComponent("Speed")
+    
+    -- Ne pas traiter si le menu est ouvert
+    if brain.menuOpen then
+        return
     end
     
-    -- Debug résumé périodique
-    if self.debugMode and (frozenCount > 0 or love.timer.getTime() % 15 < self.AI_TICK_RATE) then
-        if frozenCount > 0 then
-            print("[VILLAGER AI] 🔒", frozenCount, "villageois gelés,", activeCount, "actifs")
+    -- Logique d'IA selon l'état
+    if brain.state == "idle" then
+        if not target.isMoving then
+            -- Générer une nouvelle destination aléatoire
+            local newX = love.math.random(50, self.world.width - 50)
+            local newY = love.math.random(50, self.world.height - 50)
+            
+            target.destination = { x = newX, y = newY }
+            target.isMoving = true
+            
+            -- OPTIMISATION: Logs réduits - seulement pour debug détaillé
+            if self.debugMode and (self.detailedLogTimer or 0) > 10 then
+                print("[VILLAGER AI]", villager.id, "nouvelle destination:", newX, newY)
+                self.detailedLogTimer = 0
+            end
+            self.detailedLogTimer = (self.detailedLogTimer or 0) + self.updateFrequency
         end
+    elseif brain.state == "working" then
+        -- Logique de travail (récolte, etc.)
+        self:processWorkingBehavior(villager)
+    elseif brain.state == "following" then
+        -- Logique de suivi
+        self:processFollowingBehavior(villager)
     end
 end
 
@@ -201,8 +220,10 @@ function VillagerAISystem:generateRandomDestination(currentPos)
 end
 
 function VillagerAISystem:updateMovement(dt)
-    -- Mettre à jour le mouvement continu des villageois
+    -- OPTIMISATION: Mettre à jour seulement les villageois en mouvement
     local movingVillagers = self.world:getEntitiesWithAtLeast({"Villager", "Position", "Target", "Speed", "Brain"})
+    
+    local actuallyMoving = 0
     
     for _, villager in ipairs(movingVillagers) do
         local brain = villager:getComponent("Brain")
@@ -217,7 +238,10 @@ function VillagerAISystem:updateMovement(dt)
             goto continue_movement
         end
         
+        -- OPTIMISATION: Ne traiter que les villageois réellement en mouvement
         if target.isMoving and target.destination then
+            actuallyMoving = actuallyMoving + 1
+            
             -- Calculer la direction vers la destination
             local dx = target.destination.x - position.position.x
             local dy = target.destination.y - position.position.y
@@ -232,8 +256,8 @@ function VillagerAISystem:updateMovement(dt)
                 position.position.x = position.position.x + dirX * moveSpeed * dt
                 position.position.y = position.position.y + dirY * moveSpeed * dt
                 
-                -- Mettre à jour l'orientation
-                if orientation then
+                -- Mettre à jour l'orientation seulement si nécessaire
+                if orientation and (math.abs(dx) > 1 or math.abs(dy) > 1) then
                     orientation.orientation = math.atan2(dy, dx)
                 end
                 
@@ -245,13 +269,23 @@ function VillagerAISystem:updateMovement(dt)
                 target.destination = nil
                 target.distance = 0
                 
-                if self.debugMode then
+                -- OPTIMISATION: Log d'arrivée seulement si debug détaillé activé
+                if self.debugMode and (self.detailedLogTimer or 0) > 10 then
                     print("[VILLAGER AI]", villager.id, "arrivé à destination")
                 end
             end
         end
         
         ::continue_movement::
+    end
+    
+    -- Statistiques pour monitoring (mise à jour toutes les 5 secondes)
+    if self.debugMode then
+        self.movementLogTimer = (self.movementLogTimer or 0) + dt
+        if self.movementLogTimer > 5.0 then
+            print("[VILLAGER AI] Villageois en mouvement:", actuallyMoving, "/", #movingVillagers)
+            self.movementLogTimer = 0
+        end
     end
 end
 

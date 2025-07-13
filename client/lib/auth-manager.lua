@@ -176,7 +176,7 @@ function AuthManager:loginWithToken(email, token)
 end
 
 function AuthManager:connectToMasterServer(host, port)
-    host = host or "127.0.0.1"
+    host = host or "192.168.1.58"
     port = port or 8080
     
     if _G.masterServer then
